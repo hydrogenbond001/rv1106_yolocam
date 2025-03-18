@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.10)
 
-set(SDK_PATH $ENV{LUCKFOX_SDK_PATH})
-if(NOT SDK_PATH)
-    message(WARNING "Please Set Luckfox-pico SDK Path. Such as:export LUCKFOX_SDK_PATH=$(pwd)")
-    return()
-endif()
+# set(SDK_PATH $ENV{LUCKFOX_SDK_PATH})
+# if(NOT SDK_PATH)
+#     message(WARNING "Please Set Luckfox-pico SDK Path. Such as:export LUCKFOX_SDK_PATH=.")
+#     return()
+# endif()
 
-set(CMAKE_C_COMPILER "${SDK_PATH}/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc"
+set(CMAKE_C_COMPILER "${CMAKE_CURRENT_SOURCE_DIR}/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc"
 )
-set(CMAKE_CXX_COMPILER "${SDK_PATH}/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-g++"
+set(CMAKE_CXX_COMPILER "${CMAKE_CURRENT_SOURCE_DIR}/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-g++"
 )
 
 #Processing Parameters
