@@ -1,0 +1,25 @@
+lv_drm/lvgl/CMakeFiles/lvgl.dir/src/font/lv_font.c.o: \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/lv_font.c \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/lv_font.h \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/../lv_conf_internal.h \
+ /home/ph/sololinker/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/lib/gcc/arm-rockchip830-linux-uclibcgnueabihf/8.3.0/include/stdint.h \
+ /home/ph/sololinker/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/arm-rockchip830-linux-uclibcgnueabihf/sysroot/usr/include/stdint.h \
+ /home/ph/sololinker/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/arm-rockchip830-linux-uclibcgnueabihf/sysroot/usr/include/features.h \
+ /home/ph/sololinker/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/arm-rockchip830-linux-uclibcgnueabihf/sysroot/usr/include/bits/uClibc_config.h \
+ /home/ph/sololinker/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/arm-rockchip830-linux-uclibcgnueabihf/sysroot/usr/include/sys/cdefs.h \
+ /home/ph/sololinker/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/arm-rockchip830-linux-uclibcgnueabihf/sysroot/usr/include/bits/wchar.h \
+ /home/ph/sololinker/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/arm-rockchip830-linux-uclibcgnueabihf/sysroot/usr/include/bits/wordsize.h \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/../lv_conf_kconfig.h \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lv_conf.h \
+ /home/ph/sololinker/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/lib/gcc/arm-rockchip830-linux-uclibcgnueabihf/8.3.0/include/stddef.h \
+ /home/ph/sololinker/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/lib/gcc/arm-rockchip830-linux-uclibcgnueabihf/8.3.0/include/stdbool.h \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/lv_symbol_def.h \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/../misc/lv_area.h \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/../misc/../lv_conf_internal.h \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/../misc/lv_utils.h \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/../misc/lv_log.h \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/../misc/lv_types.h \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/../misc/lv_assert.h \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/../misc/lv_log.h \
+ /home/ph/sololinker/project/app/rv1106_drm_lvgl/lv_drm/lvgl/src/font/../misc/lv_mem.h \
+ /home/ph/sololinker/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/arm-rockchip830-linux-uclibcgnueabihf/sysroot/usr/include/string.h
