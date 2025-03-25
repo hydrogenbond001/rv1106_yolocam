@@ -65,6 +65,7 @@ target_link_libraries(${PROJECT_NAME}
                     rkaiq
                     pthread
                     rtsp
+                    drm
                     )
 
 target_include_directories(${PROJECT_NAME} PRIVATE                        
