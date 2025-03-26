@@ -44,6 +44,7 @@ cv::Mat letterbox(cv::Mat input) {
     float scaleX = (float)model_width / (float)width;
     float scaleY = (float)model_height / (float)height;
     scale = scaleX < scaleY ? scaleX : scaleY;
+    printf("scale = %f\n",scale);
     
     int inputWidth  = (int)((float)width * scale);
     int inputHeight = (int)((float)height * scale);
@@ -53,7 +54,7 @@ cv::Mat letterbox(cv::Mat input) {
     
     cv::Mat inputScale;
     cv::resize(input, inputScale, cv::Size(inputWidth, inputHeight), 0, 0, cv::INTER_LINEAR);
-    cv::Mat letterboxImage(640, 640, CV_8UC3, cv::Scalar(0, 0, 0));
+    cv::Mat letterboxImage(640, 640, CV_8UC3, cv::Scalar(114, 114, 114));
     cv::Rect roi(leftPadding, topPadding, inputWidth, inputHeight);
     inputScale.copyTo(letterboxImage(roi));
 
@@ -66,6 +67,125 @@ void mapCoordinates(int *x, int *y) {
     *x = (int)((float)mx / scale);
     *y = (int)((float)my / scale);
 }
+
+int DRM_setup(int *fd, void **fb_map, uint32_t *fb_id, uint32_t *fb_size, drmModeCrtc **out_crtc, drmModeConnector **out_connector, drmModeModeInfo **out_mode) {
+    uint32_t local_fb_id = 0;
+    *fd = open("/dev/dri/card0", O_RDWR);
+    if (*fd < 0) {
+        fprintf(stderr, "Failed to open DRM device: %s\n", strerror(errno));
+        return -1;
+    }
+
+    drmModeRes *resources = drmModeGetResources(*fd);
+    if (!resources) {
+        fprintf(stderr, "Failed to get DRM resources\n");
+        close(*fd);
+        return -1;
+    }
+
+    drmModeConnector *connector = NULL;
+    for (int i = 0; i < resources->count_connectors; i++) {
+        connector = drmModeGetConnector(*fd, resources->connectors[i]);
+        if (connector && connector->connection == DRM_MODE_CONNECTED) {
+            break;
+        }
+        drmModeFreeConnector(connector);
+    }
+    if (!connector) {
+        fprintf(stderr, "No connected DRM connector found\n");
+        drmModeFreeResources(resources);
+        close(*fd);
+        return -1;
+    }
+
+    drmModeModeInfo *mode = NULL;
+    for (int i = 0; i < connector->count_modes; i++) {
+        if (connector->modes[i].hdisplay == DISP_WIDTH && connector->modes[i].vdisplay == DISP_HEIGHT) {
+            mode = &connector->modes[i];
+            break;
+        }
+    }
+    if (!mode) {
+        fprintf(stderr, "No matching display mode found\n");
+        drmModeFreeConnector(connector);
+        drmModeFreeResources(resources);
+        close(*fd);
+        return -1;
+    }
+
+    struct drm_mode_create_dumb create_dumb = {0};
+    create_dumb.width = DISP_WIDTH;
+    create_dumb.height = DISP_HEIGHT;
+    create_dumb.bpp = 32;
+
+    if (drmIoctl(*fd, DRM_IOCTL_MODE_CREATE_DUMB, &create_dumb) < 0) {
+        fprintf(stderr, "Failed to create dumb buffer: %s\n", strerror(errno));
+        drmModeFreeConnector(connector);
+        drmModeFreeResources(resources);
+        close(*fd);
+        return -1;
+    }
+
+    struct drm_mode_map_dumb map_dumb = {0};
+    map_dumb.handle = create_dumb.handle;
+
+    if (drmIoctl(*fd, DRM_IOCTL_MODE_MAP_DUMB, &map_dumb) < 0) {
+        fprintf(stderr, "Failed to map dumb buffer: %s\n", strerror(errno));
+        drmModeFreeConnector(connector);
+        drmModeFreeResources(resources);
+        close(*fd);
+        return -1;
+    }
+
+    *fb_map = mmap(0, create_dumb.size, PROT_READ | PROT_WRITE, MAP_SHARED, *fd, map_dumb.offset);
+    if (*fb_map == MAP_FAILED) {
+        fprintf(stderr, "Failed to mmap framebuffer: %s\n", strerror(errno));
+        drmModeFreeConnector(connector);
+        drmModeFreeResources(resources);
+        close(*fd);
+        return -1;
+    }
+
+    if (drmModeAddFB(*fd, DISP_WIDTH, DISP_HEIGHT, 24, 32, create_dumb.pitch, create_dumb.handle, &local_fb_id) < 0) {
+        fprintf(stderr, "Failed to add framebuffer: %s\n", strerror(errno));
+        munmap(*fb_map, create_dumb.size);
+        drmModeFreeConnector(connector);
+        drmModeFreeResources(resources);
+        close(*fd);
+        return -1;
+    }
+
+    drmModeCrtc *crtc = drmModeGetCrtc(*fd, resources->crtcs[0]);
+    if (!crtc) {
+        fprintf(stderr, "Failed to get CRTC: %s\n", strerror(errno));
+        munmap(*fb_map, create_dumb.size);
+        drmModeFreeConnector(connector);
+        drmModeFreeResources(resources);
+        close(*fd);
+        return -1;
+    }
+
+    if (drmModeSetCrtc(*fd, crtc->crtc_id, local_fb_id, 0, 0, &connector->connector_id, 1, mode) < 0) {
+        fprintf(stderr, "Failed to set CRTC: %s\n", strerror(errno));
+        drmModeFreeCrtc(crtc);
+        munmap(*fb_map, create_dumb.size);
+        drmModeFreeConnector(connector);
+        drmModeFreeResources(resources);
+        close(*fd);
+        return -1;
+    }
+
+    *fb_id = local_fb_id;
+    *fb_size = create_dumb.size;
+    *out_crtc = crtc;
+    *out_connector = connector;
+    *out_mode = mode;
+
+    drmModeFreeResources(resources);
+    return 0;
+}
+
+
 static uint64_t get_time_ms() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -81,105 +201,14 @@ int main(int argc, char *argv[]) {
     init_yolov5_model("./model/yolov5.rknn", &rknn_app_ctx);
     init_post_process();
 
-    uint32_t fb_id = 0;
-
-    // DRM setup
-    int fd = open("/dev/dri/card0", O_RDWR);
-    drmModeRes *resources = drmModeGetResources(fd);
-    drmModeConnector *connector = nullptr;
-    for (int i = 0; i < resources->count_connectors; i++) {
-        connector = drmModeGetConnector(fd, resources->connectors[i]);
-        if (connector && connector->connection == DRM_MODE_CONNECTED) {
-            break;
-        }
-        drmModeFreeConnector(connector);
-    }
-
-    drmModeModeInfo *mode = NULL;
-	for (int i = 0; i < connector->count_modes; i++) {
-        if (connector->modes[i].hdisplay == DISP_WIDTH &&
-            connector->modes[i].vdisplay == DISP_HEIGHT) {
-            mode = &connector->modes[i];
-            break;
-        }
-    }
-
-	if (!mode) {
-        fprintf(stderr, "No matching display mode found.\n");
-        drmModeFreeConnector(connector);
-        drmModeFreeResources(resources);
-        close(fd);
-        return -1;
-    }
-
-
-	
-
-
-	// 创建 Dumb Buffer
-    struct drm_mode_create_dumb create_dumb = {0};
-    create_dumb.width = DISP_WIDTH;
-    create_dumb.height = DISP_HEIGHT;
-    create_dumb.bpp = 32; // 32 bits per pixel (ARGB8888)
-
-    if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &create_dumb) < 0) {
-        fprintf(stderr, "Failed to create dumb buffer: %s\n", strerror(errno));
-        drmModeFreeConnector(connector);
-        drmModeFreeResources(resources);
-        close(fd);
-        return -1;
-    }
-
-    
-    // 映射 Dumb Buffer
-    struct drm_mode_map_dumb map_dumb = {0};
-    map_dumb.handle = create_dumb.handle;
-
-    if (drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &map_dumb) < 0) {
-        fprintf(stderr, "Failed to map dumb buffer: %s\n", strerror(errno));
-        drmModeFreeConnector(connector);
-        drmModeFreeResources(resources);
-        close(fd);
-        return -1;
-    }
-
-    void *fb_map = mmap(0, create_dumb.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, map_dumb.offset);
-    if (fb_map == MAP_FAILED) {
-        fprintf(stderr, "Failed to mmap framebuffer: %s\n", strerror(errno));
-        drmModeFreeConnector(connector);
-        drmModeFreeResources(resources);
-        close(fd);
-        return -1;
-    }
-
-    // 创建 DRM Framebuffer
-    if (drmModeAddFB(fd, DISP_WIDTH, DISP_HEIGHT, 24, 32, create_dumb.pitch, create_dumb.handle, &fb_id) < 0) {
-        fprintf(stderr, "Failed to add framebuffer: %s\n", strerror(errno));
-        munmap(fb_map, create_dumb.size);
-        drmModeFreeConnector(connector);
-        drmModeFreeResources(resources);
-        close(fd);
-        return -1;
-    }
-
-    // 设置 CRTC（显示控制器）
-    drmModeCrtc *crtc = drmModeGetCrtc(fd, resources->crtcs[0]);
-    if (!crtc) {
-        fprintf(stderr, "Failed to get CRTC: %s\n", strerror(errno));
-        munmap(fb_map, create_dumb.size);
-        drmModeFreeConnector(connector);
-        drmModeFreeResources(resources);
-        close(fd);
-        return -1;
-    }
-
-    if (drmModeSetCrtc(fd, crtc->crtc_id, fb_id, 0, 0, &connector->connector_id, 1, mode) < 0) {
-        fprintf(stderr, "Failed to set CRTC: %s\n", strerror(errno));
-        drmModeFreeCrtc(crtc);
-        munmap(fb_map, create_dumb.size);
-        drmModeFreeConnector(connector);
-        drmModeFreeResources(resources);
-        close(fd);
+    int fd;
+    void *fb_map;
+    uint32_t fb_id, fb_size;
+    drmModeCrtc *crtc;
+    drmModeConnector *connector;
+    drmModeModeInfo *mode;
+    if (DRM_setup(&fd, &fb_map, &fb_id, &fb_size, &crtc, &connector, &mode) != 0) {
+        fprintf(stderr, "DRM setup failed\n");
         return -1;
     }
 
@@ -187,8 +216,8 @@ int main(int argc, char *argv[]) {
 	uint64_t start_time = get_time_ms();
 	
     // Video capture and inference loop
-    // cv::VideoCapture cap(0);
-	cv::Mat frame = cv::imread("./model/1234.jpg"); 
+    // cv::VideoCapture cap(0);std::string input = argv[1];
+	cv::Mat frame = cv::imread(argv[1]); 
     // if (!cap.isOpened()) {
     //     printf("Failed to open camera\n");
     //     return -1;
@@ -209,8 +238,18 @@ int main(int argc, char *argv[]) {
         memcpy(rknn_app_ctx.input_mems[0]->virt_addr, letterboxImage.data, model_width * model_height * 3);
         inference_yolov5_model(&rknn_app_ctx, &od_results);
 
+        
+        cv::cvtColor(frame, frame, cv::COLOR_BGR2BGRA);
+		cv::resize(frame, frame, cv::Size(DISP_WIDTH, DISP_HEIGHT));
+
+        // 画框和概率
+        char text[256];
         for (int i = 0; i < od_results.count; i++) {
             object_detect_result *det_result = &(od_results.results[i]);
+            printf("%s @ (%d %d %d %d) %.3f\n", coco_cls_to_name(det_result->cls_id),
+                    det_result->box.left, det_result->box.top,
+                    det_result->box.right, det_result->box.bottom,
+                    det_result->prop);
             int sX = (int)(det_result->box.left);
             int sY = (int)(det_result->box.top);
             int eX = (int)(det_result->box.right);
@@ -218,12 +257,33 @@ int main(int argc, char *argv[]) {
             mapCoordinates(&sX, &sY);
             mapCoordinates(&eX, &eY);
             cv::rectangle(frame, cv::Point(sX, sY), cv::Point(eX, eY), cv::Scalar(0, 255, 0), 3);
+            sprintf(text, "%s %.1f%%", coco_cls_to_name(det_result->cls_id), det_result->prop * 100);
+            cv::putText(frame, text, cv::Point(sX, sY - 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 0, 0), 2);
         }
-		cv::cvtColor(frame, frame, cv::COLOR_BGR2BGRA);
-		cv::resize(frame, frame, cv::Size(DISP_WIDTH, DISP_HEIGHT));
+        // 画框和概率
+        // char text[256];
+        // for (int i = 0; i < od_results.count; i++)
+        // {
+        //     object_detect_result *det_result = &(od_results.results[i]);
+        //     printf("%s @ (%d %d %d %d) %.3f\n", coco_cls_to_name(det_result->cls_id),
+        //         det_result->box.left, det_result->box.top,
+        //         det_result->box.right, det_result->box.bottom,
+        //         det_result->prop);
+        //     int x1 = det_result->box.left;
+        //     int y1 = det_result->box.top;
+        //     int x2 = det_result->box.right;
+        //     int y2 = det_result->box.bottom;
+
+        //     cv::rectangle(frame, cv::Point(sX, sY), cv::Point(eX, eY), cv::Scalar(0, 255, 0), 3);
+
+        //     sprintf(text, "%s %.1f%%", coco_cls_to_name(det_result->cls_id), det_result->prop * 100);
+        //     draw_text(&src_image, text, x1, y1 - 20, COLOR_RED, 10);
+        // }
+        
+		
 		
 		// 9. 复制 RGBA 数据到 framebuffer
-		memcpy(fb_map, frame.data, create_dumb.size);
+		memcpy(fb_map, frame.data, fb_size);
 		
     
     // 缩放或裁剪以匹配 SCREEN_WIDTH x SCREEN_HEIGHT
@@ -258,10 +318,12 @@ int main(int argc, char *argv[]) {
     deinit_post_process();
 
 	drmModeRmFB(fd, fb_id);
-    munmap(fb_map, create_dumb.size);
-    drmModeFreeCrtc(crtc);
-    drmModeFreeConnector(connector);
-    drmModeFreeResources(resources);
+    munmap(fb_map, fb_size);
+    // drmModeFreeCrtc(crtc);
+    // drmModeFreeConnector(connector);
+    // drmModeFreeResources(resources);
     close(fd);
     return 0;
 }
+
+
