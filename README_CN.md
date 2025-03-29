@@ -1,57 +1,36 @@
-![luckfox](https://github.com/LuckfoxTECH/luckfox-pico/assets/144299491/cec5c4a5-22b9-4a9a-abb1-704b11651e88)
 # Luckfox Pico RKMPI example
-[English](./README.md)
-+ 本例程基于 RKMPI 和 Opencv-Mobile 实现图像编码推流
-+ 本例程基于 RKNN 实现图像识别推理
-+ 专为 Luckfox Pico 系列开发板提供视频捕获推流的例程
+
++ 本例程基于 RKNN 和 Opencv-Mobile 实现图像投影到屏幕
++ 本例程基于 使用480x480 lcd屏幕
++ 专
 
 ## 实现效果
-### luckfox_pico_rtsp_opencv   
-<img src="images/luckfox_pico_rtsp_opencv.jpg" alt="luckfox_pico_rtsp_opencv" width="300">
+### yolo_screen   
+<img src="images/yolo_screen.jpg" alt="luckfox_pico_rtsp_opencv" height="300">
 
-### luckfox_pico_rtsp_opencv_capture
-<img src="images/luckfox_pico_rtsp_opencv_capture.jpg" alt="luckfox_pico_rtsp_opencv_capture" width="300">
 
-### luckfox_pico_rtsp_retinaface   
-<img src="images/luckfox_pico_rtsp_retinaface.jpg" alt="luckfox_pico_rtsp_retinaface" width="300">
-
-### luckfox_pico_rtsp_retinaface_osd 
-<img src="images/luckfox_pico_rtsp_retinaface_osd.jpg" alt="luckfox_pico_rtsp_retinaface_osd" width="300">
-
-### luckfox_pico_rtsp_yolov5        
-<img src="images/luckfox_pico_rtsp_yolov5.jpg" alt="luckfox_pico_rtsp_yolov5" width="300">
 
 ## 平台支持
- DEMO                           | CPU | 系统 | 摄像头 |
-------------------------------- | --- | ---- | ------- |
-luckfox_pico_rtsp_opencv        | RV1103(需修改分辨率)、RV1106 | buildroot | sc3336
-luckfox_pico_rtsp_opencv_capture| RV1103、RV1106 | buildroot | sc3336 
-luckfox_pico_rtsp_retinaface    | RV1103、RV1106 | buildroot | sc3336 
-luckfox_pico_rtsp_retinaface_osd| RV1103、RV1106 | buildroot | sc3336 
-luckfox_pico_rtsp_yolov5        | RV1106         | buildroot | sc3336 
 
-+ **RV1103**：`Luckfox Pico` `Luckfox Pico Mini A` `Luckfpx Pico Miini B` `Luckfox Pico Plus`
-+ **RV1106**：`Luckfox Pico Pro` `Luckfox Pico Max` `Luckfox Pico Ultra` `Luckfox Pico Ultra W`
++ **RV1106**：`Luckfox Pico Pro` `Luckfox Pico Max` `Luckfox Pico Ultra` `Luckfox Pico Ultra W` `sololink A`
 
 ## 编译
-+ 设置环境变量
-    ```
-    export LUCKFOX_SDK_PATH=< luckfox-pico Sdk 地址>
-    ```
-    **注意**：使用绝对地址。
++ 不用设置环境变量
+
 + 获取仓库源码并设置自动编译脚本执行权限
     ```
     chmod a+x ./build.sh
     ./build.sh
     ```
-+ 执行 `./build.sh` 后选择编译的例程
++ 执行 `./build.sh` 后选择编译的例程,6为我的程序
     ```
     1) luckfox_pico_rtsp_opencv
     2) luckfox_pico_rtsp_opencv_capture
     3) luckfox_pico_rtsp_retinaface
     4) luckfox_pico_rtsp_retinaface_osd
     5) luckfox_pico_rtsp_yolov5
-    Enter your choice [1-5]:
+    6) luckfox_pico_screen_yolov5
+    Enter your choice [1-6]:
     ```
 
 ## 运行
@@ -62,14 +41,37 @@ luckfox_pico_rtsp_yolov5        | RV1106         | buildroot | sc3336
     luckfox_pico_rtsp_retinaface_demo
     luckfox_pico_rtsp_retinaface_osd_demo
     luckfox_pico_rtsp_yolov5_demo 
+    luckfox_pico_screen_yolov5
     ```
 + 将生成的部署文件夹完整上传到 Luckfox Pico 上 (可使用adb ssh等方式) ，板端进入文件夹运行
     ```
     # 在 Luckfox Pico 板端运行，<Demo Target> 是部署文件夹中的可执行程序
-    chmod a+x <Demo Target>
-    ./<Demo Target>
+    chmod a+x ./luckfox_pico_screen_yolov5
+    ./luckfox_pico_screen_yolov5 model/bus.jpg
+
     ```
-+ 使用 VLC 打开网络串流 `rtsp://172.32.0.93/live/0`（按实际情况修改 IP 地址拉取图像）
++ 运行结果
+    ```
+    index=0, name=images, n_dims=4, dims=[1, 640, 640, 3], n_elems=1228800, size=1228800, fmt=NHWC, type=INT8, qnt_type=AFFINE, zp=-128, scale=0
+    .003922
+    index=0, name=output0, n_dims=4, dims=[1, 80, 80, 255], n_elems=1632000, size=1632000, fmt=NHWC, type=INT8, qnt_type=AFFINE, zp=-128, scale=
+    0.003922
+    index=1, name=286, n_dims=4, dims=[1, 40, 40, 255], n_elems=408000, size=408000, fmt=NHWC, type=INT8, qnt_type=AFFINE, zp=-128, scale=0.0039
+    22
+    index=2, name=288, n_dims=4, dims=[1, 20, 20, 255], n_elems=102000, size=102000, fmt=NHWC, type=INT8, qnt_type=AFFINE, zp=-128, scale=0.0039
+    22
+    model is NHWC input fmt
+    model input height=640, width=640, channel=3
+    load lable ./model/coco_80_labels_list.txt
+    scale = 1.333333
+    person @ (478 240 560 525) 0.855
+    person @ (210 243 288 509) 0.852
+    person @ (111 237 227 534) 0.820
+    person @ (79 338 123 522) 0.427
+    bus @ (97 116 553 455) 0.369
+    cost 0.20 seconds
+
+    ```
 
 ## 注意
 + 在运行demo前请执行 `RkLunch-stop.sh` 关闭 Luckofox Pico 开机默认开启的后台程序 `rkicp` ,解除对摄像头的占用。
