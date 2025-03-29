@@ -1,0 +1,9 @@
+solo派的rknn是RKNN v1.6.0+81f21f4d
+nup是cat /proc/rknpu/version
+RKNPU driver: v0.8.8
+Initialized RKNPU driver: v0.8.8 for 20230428
+
+
+luckfox是cat /proc/rknpu/version
+RKNPU driver: v0.9.2
+Initialized RKNPU driver: v0.9.2 for 20230825
