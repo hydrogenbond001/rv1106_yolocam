@@ -217,7 +217,7 @@ int main(int argc, char *argv[])
     rknn_app_context_t rknn_app_ctx;
     object_detect_result_list od_results;
     memset(&rknn_app_ctx, 0, sizeof(rknn_app_context_t));
-    init_yolov5_model("./model/yolov5.rknn", &rknn_app_ctx);
+    init_yolov5_model("./model/best.rknn", &rknn_app_ctx);
     init_post_process();
 
     int fd;

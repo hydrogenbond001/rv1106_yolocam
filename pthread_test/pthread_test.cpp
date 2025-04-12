@@ -1,41 +1,54 @@
 #include <pthread.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
 
+#define NUM_THREADS 4
+#define ARRAY_SIZE 100
 
-void *mypthreadFunction(void *pvoid)
-{
-        int *i = (int*)pvoid;  // 危险！！！线程里用指针指向main函数里变量的地址，后续改写操作会影响到main函数该地址上的值
-        int j = 0;
+int array[ARRAY_SIZE];
+int partial_sums[NUM_THREADS] = {0};
 
-        // 此时i指向的main函数的栈帧
-        printf("thread i addr: %p, val: %d\n", i, *i);
+// 线程函数，计算数组的一部分和
+void* calculate_partial_sum(void* arg) {
+    int thread_id = *(int*)arg;
+    int start = thread_id * (ARRAY_SIZE / NUM_THREADS);
+    int end = start + (ARRAY_SIZE / NUM_THREADS);
 
-        while(j < 10)
-        {
-                printf("thread function, i: %d\n", (*i)++);
-                j++;
-                sleep(1);
-        }
+    for (int i = start; i < end; i++) {
+        partial_sums[thread_id] += array[i];
+    }
+
+    printf("Thread %d calculated partial sum: %d\n", thread_id, partial_sums[thread_id]);
+    pthread_exit(NULL);
 }
 
-int main()
-{
-        int i = 10;
-        int j = 0;
-        pthread_t tid;
+int main() {
+    pthread_t threads[NUM_THREADS];
+    int thread_ids[NUM_THREADS];
 
-        printf("-main- i addr: %p, val: %d\n", &i, i);
-        pthread_create(&tid, NULL, mypthreadFunction, (void *)&i); // 传局部自动变量地址
+    // 初始化数组
+    for (int i = 0; i < ARRAY_SIZE; i++) {
+        array[i] = i + 1;
+    }
 
-        while(j < 6)
-        {
-                printf("-main- function, i: %d\n", i);
-                j++;
-                sleep(1);
-        }
-        printf("-main- function exit!\n");
-        pthread_exit(NULL);
-    return(0);
+    // 创建线程
+    for (int i = 0; i < NUM_THREADS; i++) {
+        thread_ids[i] = i;
+        pthread_create(&threads[i], NULL, calculate_partial_sum, (void*)&thread_ids[i]);
+    }
+
+    // 等待所有线程完成
+    for (int i = 0; i < NUM_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    // 汇总部分和
+    int total_sum = 0;
+    for (int i = 0; i < NUM_THREADS; i++) {
+        total_sum += partial_sums[i];
+    }
+
+    printf("Total sum of array: %d\n", total_sum);
+
+    return 0;
 }
