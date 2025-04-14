@@ -73,8 +73,11 @@ target_include_directories(${PROJECT_NAME} PRIVATE
                             ${EXAMPLE_DIR}/include
                             ${CMAKE_CURRENT_SOURCE_DIR}
                             ${CMAKE_CURRENT_SOURCE_DIR}/utils
+                            ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/image
                             ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/rknpu2/include
+                            ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/allocator/dma
                             ${CMAKE_CURRENT_SOURCE_DIR}/common 
+                            ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/librga/include
                             ${CMAKE_CURRENT_SOURCE_DIR}/common/isp3.x   
                             ${CMAKE_CURRENT_SOURCE_DIR}/include
                             ${CMAKE_CURRENT_SOURCE_DIR}/include/rknn

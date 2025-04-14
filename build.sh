@@ -21,7 +21,8 @@ options=("luckfox_pico_rtsp_opencv"
 	"luckfox_pico_rtsp_retinaface"
 	"luckfox_pico_rtsp_retinaface_osd"
 	"luckfox_pico_rtsp_yolov5"
-	"luckfox_pico_screen_yolov5")
+	"luckfox_pico_screen_yolov5"
+	"luckfox_zero_copy")
 
 PS3="Enter your choice [1-${#options[@]}]: "
 

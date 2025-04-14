@@ -23,19 +23,82 @@
 #include <string.h>
 #include <sys/time.h>
 #include <vector>
-
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/poll.h>
+#include <time.h>
+#include <unistd.h>
+#include <vector>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include <stb/stb_image_resize.h>
-
 #include "postprocess.h"
+#include <drm/drm.h>
+#include <drm/drm_mode.h>
+#include <xf86drm.h>
+#include <xf86drmMode.h>
+#include <iostream>
+#include <sys/mman.h>
 
-#define PERF_WITH_POST 1
+#define DISP_WIDTH 480
+#define DISP_HEIGHT 480
+
+// #define PERF_WITH_POST 1
 
 /*-------------------------------------------
                   Functions
 -------------------------------------------*/
+// model size
+// int model_width = 640;
+// int model_height = 640;
+float scale;
+// int leftPadding;
+// int topPadding;
+
+// // post process
+// float scale_w;
+// float scale_h;
+
+// DRM全局变量
+int drm_fd;
+uint32_t drm_fb_id;
+void *drm_fb_map;
+uint32_t drm_fb_size;
+drmModeCrtc *drm_crtc;
+drmModeConnector *drm_connector;
+
+void mapCoordinates(int *x1, int *y1, int *x2, int *y2, int leftPadding, int topPadding, float scale_W, float scale_H)
+{
+
+  //  映射到显示尺寸（480x480）
+  *x1 = *x1 * scale_W;
+  *y1 = *y1 * scale_H;
+  *x2 = *x2 * scale_W;
+  *y2 = *y2 * scale_H;
+
+  //  确保坐标不越界（480x480）
+  if (*x1 < 0)
+    *x1 = 0;
+  if (*y1 < 0)
+    *y1 = 0;
+  if (*x2 > 480)
+    *x2 = 480;
+  if (*y2 > 480)
+    *y2 = 480;
+}
+
 static inline int64_t getCurrentTimeUs()
 {
   struct timeval tv;
@@ -55,42 +118,6 @@ static void dump_tensor_attr(rknn_tensor_attr *attr)
          "zp=%d, scale=%f\n",
          attr->index, attr->name, attr->n_dims, dims, attr->n_elems, attr->size, get_format_string(attr->fmt),
          get_type_string(attr->type), get_qnt_type_string(attr->qnt_type), attr->zp, attr->scale);
-}
-
-static void *load_file(const char *file_path, size_t *file_size)
-{
-  FILE *fp = fopen(file_path, "r");
-  if (fp == NULL)
-  {
-    printf("failed to open file: %s\n", file_path);
-    return NULL;
-  }
-
-  fseek(fp, 0, SEEK_END);
-  size_t size = (size_t)ftell(fp);
-  fseek(fp, 0, SEEK_SET);
-
-  void *file_data = malloc(size);
-  if (file_data == NULL)
-  {
-    fclose(fp);
-    printf("failed allocate file size: %zu\n", size);
-    return NULL;
-  }
-
-  if (fread(file_data, 1, size, fp) != size)
-  {
-    fclose(fp);
-    free(file_data);
-    printf("failed to read file data!\n");
-    return NULL;
-  }
-
-  fclose(fp);
-
-  *file_size = size;
-
-  return file_data;
 }
 
 static unsigned char *load_image(const char *image_path, rknn_tensor_attr *input_attr, int *img_height, int *img_width)
@@ -147,7 +174,168 @@ static unsigned char *load_image(const char *image_path, rknn_tensor_attr *input
   return image_data;
 }
 
+int drm_setup()
+{
+  // 打开DRM设备
+  drm_fd = open("/dev/dri/card0", O_RDWR);
+  if (drm_fd < 0)
+  {
+    printf("Failed to open DRM device\n");
+    return -1;
+  }
 
+  // 获取资源
+  drmModeRes *resources = drmModeGetResources(drm_fd);
+  if (!resources)
+  {
+    printf("Failed to get DRM resources\n");
+    close(drm_fd);
+    return -1;
+  }
+
+  // 查找连接的connector
+  drm_connector = NULL;
+  for (int i = 0; i < resources->count_connectors; i++)
+  {
+    drm_connector = drmModeGetConnector(drm_fd, resources->connectors[i]);
+    if (drm_connector && drm_connector->connection == DRM_MODE_CONNECTED)
+    {
+      break;
+    }
+    drmModeFreeConnector(drm_connector);
+    drm_connector = NULL;
+  }
+
+  if (!drm_connector)
+  {
+    printf("No connected DRM connector found\n");
+    drmModeFreeResources(resources);
+    close(drm_fd);
+    return -1;
+  }
+
+  // 查找匹配的显示模式
+  drmModeModeInfo *mode = NULL;
+  for (int i = 0; i < drm_connector->count_modes; i++)
+  {
+    if (drm_connector->modes[i].hdisplay == DISP_WIDTH &&
+        drm_connector->modes[i].vdisplay == DISP_HEIGHT)
+    {
+      mode = &drm_connector->modes[i];
+      break;
+    }
+  }
+
+  if (!mode)
+  {
+    printf("No matching display mode found\n");
+    drmModeFreeConnector(drm_connector);
+    drmModeFreeResources(resources);
+    close(drm_fd);
+    return -1;
+  }
+
+  // 创建dumb buffer
+  struct drm_mode_create_dumb create_dumb = {0};
+  create_dumb.width = DISP_WIDTH;
+  create_dumb.height = DISP_HEIGHT;
+  create_dumb.bpp = 32;
+
+  if (drmIoctl(drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &create_dumb) < 0)
+  {
+    printf("Failed to create dumb buffer\n");
+    drmModeFreeConnector(drm_connector);
+    drmModeFreeResources(resources);
+    close(drm_fd);
+    return -1;
+  }
+
+  // 映射dumb buffer
+  struct drm_mode_map_dumb map_dumb = {0};
+  map_dumb.handle = create_dumb.handle;
+
+  if (drmIoctl(drm_fd, DRM_IOCTL_MODE_MAP_DUMB, &map_dumb) < 0)
+  {
+    printf("Failed to map dumb buffer\n");
+    drmModeFreeConnector(drm_connector);
+    drmModeFreeResources(resources);
+    close(drm_fd);
+    return -1;
+  }
+
+  drm_fb_map = mmap(0, create_dumb.size, PROT_READ | PROT_WRITE, MAP_SHARED, drm_fd, map_dumb.offset);
+  if (drm_fb_map == MAP_FAILED)
+  {
+    printf("Failed to mmap framebuffer\n");
+    drmModeFreeConnector(drm_connector);
+    drmModeFreeResources(resources);
+    close(drm_fd);
+    return -1;
+  }
+
+  // 创建framebuffer
+  if (drmModeAddFB(drm_fd, DISP_WIDTH, DISP_HEIGHT, 24, 32, create_dumb.pitch, create_dumb.handle, &drm_fb_id) < 0)
+  {
+    printf("Failed to add framebuffer\n");
+    munmap(drm_fb_map, create_dumb.size);
+    drmModeFreeConnector(drm_connector);
+    drmModeFreeResources(resources);
+    close(drm_fd);
+    return -1;
+  }
+
+  drm_fb_size = create_dumb.size;
+
+  // 获取CRTC
+  drm_crtc = drmModeGetCrtc(drm_fd, resources->crtcs[0]);
+  if (!drm_crtc)
+  {
+    printf("Failed to get CRTC\n");
+    munmap(drm_fb_map, drm_fb_size);
+    drmModeFreeConnector(drm_connector);
+    drmModeFreeResources(resources);
+    close(drm_fd);
+    return -1;
+  }
+
+  // 设置CRTC
+  if (drmModeSetCrtc(drm_fd, drm_crtc->crtc_id, drm_fb_id, 0, 0, &drm_connector->connector_id, 1, mode) < 0)
+  {
+    printf("Failed to set CRTC\n");
+    drmModeFreeCrtc(drm_crtc);
+    munmap(drm_fb_map, drm_fb_size);
+    drmModeFreeConnector(drm_connector);
+    drmModeFreeResources(resources);
+    close(drm_fd);
+    return -1;
+  }
+
+  drmModeFreeResources(resources);
+  return 0;
+}
+void drm_cleanup()
+{
+  if (drm_fb_id)
+  {
+    drmModeRmFB(drm_fd, drm_fb_id);
+  }
+  if (drm_fb_map)
+  {
+    munmap(drm_fb_map, drm_fb_size);
+  }
+  if (drm_crtc)
+  {
+    drmModeFreeCrtc(drm_crtc);
+  }
+  if (drm_connector)
+  {
+    drmModeFreeConnector(drm_connector);
+  }
+  if (drm_fd >= 0)
+  {
+    close(drm_fd);
+  }
+}
 /*-------------------------------------------
                   Main Functions
 -------------------------------------------*/
@@ -155,7 +343,7 @@ int main(int argc, char *argv[])
 {
   if (argc < 3)
   {
-    printf("Usage:%s model_path input_path [loop_count]\n", argv[0]);
+    printf("Usage:%s model_path input_path\n", argv[0]);
     return -1;
   }
 
@@ -271,6 +459,20 @@ int main(int argc, char *argv[])
     return -1;
   }
 
+  // 初始化DRM显示
+  if (drm_setup() != 0)
+  {
+    printf("DRM setup failed\n");
+    return -1;
+  }
+
+  cv::Mat display_frame(DISP_HEIGHT, DISP_WIDTH, CV_8UC4, drm_fb_map); // DRM显示缓冲区
+
+  // while (1)
+  // {
+
+  int64_t start_us = getCurrentTimeUs();
+
   // Create input tensor memory
   rknn_tensor_mem *input_mems[1];
   // default input type is int8 (normalize and quantize need compute in outside)
@@ -338,15 +540,15 @@ int main(int argc, char *argv[])
   printf("Begin perf ...\n");
   for (int i = 0; i < loop_count; ++i)
   {
-    int64_t start_us = getCurrentTimeUs();
+    // int64_t start_us = getCurrentTimeUs();
     ret = rknn_run(ctx, NULL);
-    int64_t elapse_us = getCurrentTimeUs() - start_us;
+    // int64_t elapse_us = getCurrentTimeUs() - start_us;
     if (ret < 0)
     {
       printf("rknn run error %d\n", ret);
       return -1;
     }
-    printf("%4d: Elapse Time = %.2fms, FPS = %.2f\n", i, elapse_us / 1000.f, 1000.f * 1000.f / elapse_us);
+    // printf("%4d: Elapse Time = %.2fms, FPS = %.2f\n", i, elapse_us / 1000.f, 1000.f * 1000.f / elapse_us);
   }
 
   int model_width = 0;
@@ -367,6 +569,16 @@ int main(int argc, char *argv[])
   float scale_w = (float)model_width / img_width;
   float scale_h = (float)model_height / img_height;
 
+  int display_width = 480;
+  int display_height = 480;
+  float scale_W = (float)display_width / img_width;
+  float scale_H = (float)display_height / img_height;
+  int leftPadding = (display_width - (int)(img_width * scale)) / 2;
+  int topPadding = (display_height - (int)(img_height * scale)) / 2;
+  printf("scale_W scale_H: %f %f \n", scale_W, scale_H);
+  printf("leftPadding topPadding: %d %d \n", leftPadding, topPadding);
+
+  printf("model_width model_height img_width img_height :%d %d %d %d \n", model_width, model_height, img_width, img_height);
   detect_result_group_t detect_result_group;
   std::vector<float> out_scales;
   std::vector<int32_t> out_zps;
@@ -380,16 +592,34 @@ int main(int argc, char *argv[])
                box_conf_threshold, nms_threshold, scale_w, scale_h, out_zps, out_scales, &detect_result_group);
 
   char text[256];
+  cv::Mat frame(640, 640, CV_8UC3, input_data);
+  cv::Mat rgb(480, 480, CV_8UC3);
+  cv::resize(frame, rgb, cv::Size(480, 480));
+
+  cv::cvtColor(rgb, display_frame, cv::COLOR_BGR2RGBA);
   for (int i = 0; i < detect_result_group.count; i++)
   {
     detect_result_t *det_result = &(detect_result_group.results[i]);
     sprintf(text, "%s %.1f%%", det_result->name, det_result->prop * 100);
-    printf("%s @ (%d %d %d %d) %f\n",
-           det_result->name,
-           det_result->box.left, det_result->box.top, det_result->box.right, det_result->box.bottom,
-           det_result->prop);
+    printf("%s @ (%d %d %d %d) %f\n", det_result->name, det_result->box.left, det_result->box.top, det_result->box.right, det_result->box.bottom, det_result->prop);
+    int sX, sY, eX, eY;
+    sX = (int)(det_result->box.left);
+    sY = (int)(det_result->box.top);
+    eX = (int)(det_result->box.right);
+    eY = (int)(det_result->box.bottom);
+    mapCoordinates(&sX, &sY, &eX, &eY, leftPadding, topPadding, scale_W, scale_H);
+    cv::rectangle(display_frame, cv::Point(sX, sY), cv::Point(eX, eY), cv::Scalar(0, 255, 0, 255), 3);
+    cv::putText(display_frame, text, cv::Point(sX, sY - 8), cv::FONT_HERSHEY_TRIPLEX, 0.5, cv::Scalar(0, 255, 0, 255), 2);
   }
+  drmModeSetCrtc(drm_fd, drm_crtc->crtc_id, drm_fb_id, 0, 0, &drm_connector->connector_id, 1, &drm_connector->modes[0]);
 
+  int64_t elapse_us = getCurrentTimeUs() - start_us;
+  printf("Elapse Time = %.2fms, FPS = %.2f\n", elapse_us / 1000.f, 1000.f * 1000.f / elapse_us);
+  printf("display_frame cols,rows: %d %d \n", display_frame.cols, display_frame.rows);
+
+  sleep(30);
+
+  // }
   // Destroy rknn memory
   rknn_destroy_mem(ctx, input_mems[0]);
   for (uint32_t i = 0; i < io_num.n_output; ++i)
@@ -397,10 +627,11 @@ int main(int argc, char *argv[])
     rknn_destroy_mem(ctx, output_mems[i]);
   }
 
-  // destroy
+  // 清理资源
+  drm_cleanup();
+
   rknn_destroy(ctx);
 
   free(input_data);
-
   return 0;
 }
