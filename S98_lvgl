@@ -1,0 +1,21 @@
+#!/bin/sh
+
+case $1 in
+        start)
+        echo 150 > /sys/class/backlight/backlight/subsystem/backlight/brightness
+        cd /root/luckfox_pico_screen_yolov5_demo
+        export LD_LIBRARY_PATH=/oem/usr/lib:$LD_LIBRARY_PATH
+        sleep 1
+        killall rkipc
+        sleep 2
+        chmod 777 ./luckfox_pico_screen_yolov5
+        ./luckfox_pico_screen_yolov5 > log.txt 2>&1 &
+        
+                ;;
+        stop)
+        pkill luckfox_pico_screen_yolov5
+                ;;
+        *)
+                exit 1
+                ;;
+esac
