@@ -24,6 +24,7 @@ options=("luckfox_pico_rtsp_opencv"
 	"luckfox_pico_screen_yolov5"
 	"luckfox_zero_copy"
 	"screen_touch_test"
+	"screen_touch_mutithread"
 	)
 
 PS3="Enter your choice [1-${#options[@]}]: "

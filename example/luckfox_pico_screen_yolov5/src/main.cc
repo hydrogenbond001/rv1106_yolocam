@@ -266,7 +266,7 @@ int main(int argc, char *argv[])
     rknn_app_context_t rknn_app_ctx;
     object_detect_result_list od_results;
     int ret;
-    const char *model_path = "./model/best_rv1106_25.rknn";
+    const char *model_path = "./model/yolov5s_80.rknn";
     memset(&rknn_app_ctx, 0, sizeof(rknn_app_context_t));
     init_yolov5_model(model_path, &rknn_app_ctx);
     printf("init rknn model success!\n");
